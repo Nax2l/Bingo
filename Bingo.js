@@ -25,6 +25,16 @@ const taskSchema = new mongoose.Schema({
     difficulty: String,
     task: String
 }, { collection: 'bingo_tasks' });
+const express = require("express");
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot is running");
+});
+
+app.listen(process.env.PORT || 3000, () => {
+  console.log("Server running");
+});
 
 const Task = mongoose.model('Task', taskSchema);
 
