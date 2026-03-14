@@ -135,7 +135,7 @@ async function drawBingoBoard(gameState) {
         // 2. كتابة النص الرئيسي للمهمة (في المنتصف)
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.font = "bold 15px Arial";
+        ctx.font = "15px Arial";
         ctx.fillStyle = cell.owner ? 'white' : 'black';
         
         const lines = wrapText(ctx, cell.task, cellWidth - 20);
