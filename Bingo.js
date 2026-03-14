@@ -25,16 +25,6 @@ const taskSchema = new mongoose.Schema({
     difficulty: String,
     task: String
 }, { collection: 'bingo_tasks' });
-const express = require("express");
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("Bot is running");
-});
-
-app.listen(process.env.PORT || 3000, () => {
-  console.log("Server running");
-});
 
 const Task = mongoose.model('Task', taskSchema);
 
@@ -43,7 +33,7 @@ const activeGames = new Map();
 
 // دالة مساعدة لتقسيم النص داخل خلايا الكانفاس
 function wrapText(ctx, text, maxWidth) {
-    if (!text) return ["مهمة غير معروفة"]; // حماية من خطأ undefined
+    if (!text) return ["مهمة غير معروفة"]; 
     
     const safeText = String(text);
     const words = safeText.split(' ');
@@ -101,7 +91,6 @@ function checkWin(gameState, team) {
 
 // دالة رسم اللوحة
 async function drawBingoBoard(gameState) {
-    // تحديد القالب المناسب بناءً على عدد الخلايا
     const templatePath = gameState.gridSize === 16 ? './template_16.png' : './template_25.png';
     const img = await loadImage(templatePath); 
     const canvas = createCanvas(img.width, img.height);
@@ -132,29 +121,55 @@ async function drawBingoBoard(gameState) {
             ctx.fillRect(x, y, cellWidth, cellHeight);
         }
 
-        // 2. كتابة النص الرئيسي للمهمة (في المنتصف)
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = "15px Arial";
-        ctx.fillStyle = cell.owner ? 'white' : 'black';
-        
-        const lines = wrapText(ctx, cell.task, cellWidth - 20);
-        const lineHeight = 25;
-        const startY = y + (cellHeight / 2) - ((lines.length - 1) * lineHeight / 2);
-        
-        lines.forEach((line, index) => {
-            ctx.fillText(line, x + (cellWidth / 2), startY + (index * lineHeight));
-        });
-        
-        // 3. كتابة رقم الخلية واسم اللعبة (في الزاوية العلوية اليسرى)
+        // 2. كتابة رقم الخلية واسم اللعبة أولاً عشان ما يتأثر بحجم خط المهمة
         ctx.textAlign = "left";
         ctx.textBaseline = "top";
         ctx.fillStyle = cell.owner ? 'rgba(255, 255, 255, 0.8)' : 'gray';
-        ctx.font = "bold 12px Arial"; // تصغير الخط قليلاً ليتسع لاسم اللعبة
+        ctx.font = "bold 10px Arial";
         
-        // جلب اسم اللعبة وكتابته بجانب الرقم
         const gameName = cell.game || 'غير معروف';
-        ctx.fillText(`${i + 1} - ${gameName}`, x + 8, y + 8);
+        ctx.fillText(`${i + 1} - ${gameName}`, x + 8, y +3 );
+
+        // 3. كتابة النص الرئيسي للمهمة بنظام (التصغير التلقائي Auto-Fit)
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = cell.owner ? 'white' : 'black';
+        
+        let fontSize = 22; // الحجم المبدئي الكبير
+        let lines = [];
+        let lineHeight = 25;
+        let maxLineWidth = 0;
+        
+        // المساحة المتاحة عمودياً (حذفنا 35 بكسل لحماية رقم الخلية والحدود السفلية)
+        const maxTextHeight = cellHeight - 35; 
+        // المساحة المتاحة أفقياً
+        const maxTextWidth = cellWidth - 15; 
+
+        // حلقة لتقليل الخط حتى يتناسب 100% داخل المربع
+        do {
+            ctx.font = `bold ${fontSize}px Arial`;
+            lineHeight = Math.floor(fontSize * 1.3); // جعل المسافة بين السطور مناسبة لحجم الخط
+            lines = wrapText(ctx, cell.task, maxTextWidth);
+            
+            // حساب أقصى عرض لسطر واحد في النص
+            maxLineWidth = Math.max(...lines.map(line => ctx.measureText(line).width));
+            
+            // إذا كان النص لا يتجاوز الطول ولا العرض، نخرج من الحلقة
+            if ((lines.length * lineHeight) <= maxTextHeight && maxLineWidth <= maxTextWidth) {
+                break;
+            }
+            fontSize--; // تصغير الخط درجة واحدة وتجربة الموضوع من جديد
+        } while (fontSize > 10); // 10 هو أصغر خط ممكن حتى يظل مقروءاً
+
+        // حساب مكان البداية العمودي ليكون النص في المنتصف بالضبط
+        const totalHeight = lines.length * lineHeight;
+        const yOffset = 10; // إزاحة بسيطة للأسفل لتجنب الاصطدام باسم اللعبة
+        const startY = y + (cellHeight / 2) - (totalHeight / 2) + yOffset;
+        
+        // رسم الأسطر النهائية
+        lines.forEach((line, index) => {
+            ctx.fillText(line, x + (cellWidth / 2), startY + (index * lineHeight));
+        });
     }
 
     return new AttachmentBuilder(canvas.toBuffer(), { name: 'bingo.png' });
@@ -219,7 +234,6 @@ function buildSetupComponents(gameState, distinctGames) {
             currentRow = new ActionRowBuilder();
         }
         
-        // التحقق مما إذا كانت اللعبة محددة من ضمن المصفوفة
         const isSelected = gameState.selectedGames.includes(g);
         const labelText = g === 'random' ? 'Random' : g;
         
@@ -278,7 +292,6 @@ client.on('messageCreate', async (message) => {
 
     const distinctGames = await Task.distinct('game');
 
-    // تهيئة حالة المباراة
     const gameState = {
         channelId: message.channel.id,
         host: message.author.id,
@@ -286,7 +299,7 @@ client.on('messageCreate', async (message) => {
         maxPlayersPerTeam: 0,
         gridSize: 0,
         winCondition: 0,
-        selectedGames: [], // تحولت إلى مصفوفة
+        selectedGames: [], 
         redTeam: new Set(),
         blueTeam: new Set(),
         tasks: [],
@@ -315,7 +328,6 @@ client.on('messageCreate', async (message) => {
             return interaction.reply({ content: "تم إلغاء المباراة.", ephemeral: true });
         }
 
-        // اختيار النمط
         if (interaction.customId.startsWith('mode_')) {
             const mode = parseInt(interaction.customId.split('_')[1]);
             if (gameState.mode !== mode) {
@@ -340,26 +352,22 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // اختيار اللعبة (التوقل / Toggle متعدد الألعاب)
         if (interaction.customId.startsWith('select_game_')) {
             const selected = interaction.customId.replace('select_game_', '');
             
             if (selected === 'random') {
-                // إذا تم اختيار العشوائي وكان موجوداً، احذفه. وإذا لم يكن، اجعله الوحيد
                 if (gameState.selectedGames.includes('random')) {
                     gameState.selectedGames = [];
                 } else {
                     gameState.selectedGames = ['random'];
                 }
             } else {
-                // إذا اختار لعبة معينة، احذف العشوائي أولاً
                 gameState.selectedGames = gameState.selectedGames.filter(g => g !== 'random');
                 
-                // التبديل للعبة المحددة
                 if (gameState.selectedGames.includes(selected)) {
-                    gameState.selectedGames = gameState.selectedGames.filter(g => g !== selected); // إزالة
+                    gameState.selectedGames = gameState.selectedGames.filter(g => g !== selected); 
                 } else {
-                    gameState.selectedGames.push(selected); // إضافة
+                    gameState.selectedGames.push(selected); 
                 }
             }
             
@@ -369,7 +377,6 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // الانضمام للفرق
         if (interaction.customId.startsWith('team_')) {
             const action = interaction.customId.split('_')[1];
             const userId = interaction.user.id;
@@ -393,7 +400,6 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // بدء المباراة (سحب المهام وتوزيعها)
         if (interaction.customId === 'start_game') {
             if (!gameState.mode) return interaction.reply({ content: "الرجاء اختيار نمط اللعب (1v1, 2v2...) أولاً!", ephemeral: true });
             if (gameState.selectedGames.length === 0) return interaction.reply({ content: "الرجاء اختيار لعبة واحدة على الأقل!", ephemeral: true });
@@ -401,16 +407,13 @@ client.on('messageCreate', async (message) => {
             let rawTasks = [];
             
             if (gameState.selectedGames.includes('random')) {
-                // سحب عشوائي شامل من كل الألعاب
                 rawTasks = await Task.aggregate([{ $sample: { size: gameState.gridSize } }]);
             } else {
-                // سحب مهام متساوية من الألعاب المحددة
                 const numGames = gameState.selectedGames.length;
                 let remainingSize = gameState.gridSize;
 
                 for (let i = 0; i < numGames; i++) {
                     const game = gameState.selectedGames[i];
-                    // حساب النصيب العادل لكل لعبة، وتوزيع الباقي على اللعبة الأخيرة
                     const take = i === numGames - 1 ? remainingSize : Math.floor(gameState.gridSize / numGames);
                     remainingSize -= take;
 
@@ -420,7 +423,6 @@ client.on('messageCreate', async (message) => {
                     ]);
                     rawTasks.push(...gameTasks);
                 }
-                // خلط جميع المهام معاً لكي لا تكون الألعاب مرتبة بجانب بعضها
                 rawTasks = rawTasks.sort(() => Math.random() - 0.5);
             }
 
@@ -428,7 +430,6 @@ client.on('messageCreate', async (message) => {
                 return interaction.reply({ content: `لا يوجد مهام كافية في قاعدة البيانات! مطلوب ${gameState.gridSize} مهمة، المتاح فقط ${rawTasks.length}.`, ephemeral: true });
             }
 
-            // هنا التعديل: قمنا بإضافة game: t.game لكي نحتفظ باسم اللعبة للرسم
             gameState.tasks = rawTasks.map(t => ({ task: t.task, game: t.game, owner: null }));
             gameState.isStarted = true;
 
@@ -442,7 +443,6 @@ client.on('messageCreate', async (message) => {
             });
         }
 
-        // أثناء اللعب (الضغط على الخلايا)
         if (interaction.customId.startsWith('cell_')) {
             const userId = interaction.user.id;
             let playerTeam = null;
